@@ -29,7 +29,7 @@ jobs:
           mkdir -p static
           cp -r templates/* static/ || true
           cp -r static/* static/ || true
-          cp predskazaniyaabot.html static/index.html
+          cp index.html static/
           touch static/.nojekyll
           
       - name: Upload artifact
