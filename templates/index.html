@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Бот Предсказаний</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a1a, #2d2d2d);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: none;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .btn-primary {
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 15px rgba(255, 215, 0, 0.5);
+        }
+        .btn-primary:disabled {
+            background: #666;
+            transform: none;
+            box-shadow: none;
+        }
+        .logo {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 20px;
+            display: block;
+        }
+        .prediction {
+            font-size: 1.2em;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+        .cooldown {
+            color: #ff6b6b;
+            font-size: 0.9em;
+            margin-top: 10px;
+        }
+        .balance {
+            font-size: 1.2em;
+            color: #FFD700;
+            margin-bottom: 20px;
+        }
+        .profile-section {
+            margin-bottom: 30px;
+        }
+        .profile-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin-right: 20px;
+            border: 3px solid #FFD700;
+        }
+        .profile-info {
+            flex-grow: 1;
+        }
+        .profile-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.5em;
+            color: #FFD700;
+            margin: 5px 0;
+        }
+        .leaderboard {
+            margin-top: 30px;
+        }
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+        .rank {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 15px;
+            font-weight: bold;
+        }
+        .rank-1 { background: #FFD700; color: #000; }
+        .rank-2 { background: #C0C0C0; color: #000; }
+        .rank-3 { background: #CD7F32; color: #fff; }
+        .user-info {
+            flex-grow: 1;
+        }
+        .username {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .predictions-count {
+            color: #FFD700;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Профиль пользователя -->
+        <div class="card profile-section">
+            <div class="profile-header">
+                <img src="{{ user.avatar_url or 'https://via.placeholder.com/80' }}" alt="Avatar" class="profile-avatar">
+                <div class="profile-info">
+                    <h3>{{ user.username }}</h3>
+                    <div class="balance">Баланс: {{ user.stars }} ⭐</div>
+                </div>
+            </div>
+            <div class="profile-stats">
+                <div class="stat-card">
+                    <div>Всего предсказаний</div>
+                    <div class="stat-value">{{ user.total_predictions }}</div>
+                </div>
+                <div class="stat-card">
+                    <div>Место в рейтинге</div>
+                    <div class="stat-value">#{{ user.rank }}</div>
+                </div>
+                <div class="stat-card">
+                    <div>Последнее предсказание</div>
+                    <div class="stat-value">{{ user.last_prediction_date }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Рейтинг пользователей -->
+        <div class="card leaderboard">
+            <h3>🏆 Топ предсказателей</h3>
+            {% for user in leaderboard %}
+            <div class="leaderboard-item">
+                <div class="rank rank-{{ loop.index }}">{{ loop.index }}</div>
+                <div class="user-info">
+                    <div class="username">{{ user.username }}</div>
+                    <div class="predictions-count">{{ user.total_predictions }} предсказаний</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Предсказание -->
+        <div class="card">
+            <img src="https://via.placeholder.com/100" alt="Logo" class="logo">
+            <h2 class="text-center mb-4">Ваше предсказание</h2>
+            
+            {% if can_predict %}
+                <button class="btn btn-primary w-100" onclick="makePayment()">
+                    Получить предсказание за 100 ⭐
+                </button>
+            {% else %}
+                <div class="prediction">
+                    {{ prediction }}
+                </div>
+                <div class="cooldown">
+                    Следующее предсказание будет доступно через: {{ time_left }}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+
+        async function makePayment() {
+            const button = document.querySelector('.btn-primary');
+            button.disabled = true;
+            button.textContent = 'Обработка...';
+
+            try {
+                const response = await fetch('/process_payment', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        user_id: {{ user.telegram_id }}
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Показываем предсказание
+                    const prediction = await fetch(`/?user_id={{ user.telegram_id }}`);
+                    const html = await prediction.text();
+                    document.documentElement.innerHTML = html;
+                } else {
+                    alert(data.error || 'Ошибка при обработке платежа');
+                    button.disabled = false;
+                    button.textContent = 'Получить предсказание за 100 ⭐';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Произошла ошибка при обработке платежа');
+                button.disabled = false;
+                button.textContent = 'Получить предсказание за 100 ⭐';
+            }
+        }
+    </script>
+</body>
+</html> 
