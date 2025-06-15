@@ -8,7 +8,7 @@ import logging
 import json
 import random
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice, PreCheckoutQuery
 from telegram.ext import (
     Application, 
     CommandHandler, 
@@ -16,7 +16,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     filters,
-    PreCheckoutQuery
+    PreCheckoutQueryHandler
 )
 from dotenv import load_dotenv
 from database import init_db, get_db, User
