@@ -8,14 +8,15 @@ import logging
 import json
 import random
 from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice
 from telegram.ext import (
     Application, 
     CommandHandler, 
     ContextTypes, 
     CallbackQueryHandler,
     MessageHandler,
-    filters
+    filters,
+    PreCheckoutQuery
 )
 from dotenv import load_dotenv
 from database import init_db, get_db, User
@@ -59,11 +60,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            "🔮 Получить предсказание",
-            web_app=WebAppInfo(url=f"{WEBAPP_URL}?user_id={user.id}")
-        )],
-        [InlineKeyboardButton("📊 Рейтинг", callback_data='show_rating')]
+        [InlineKeyboardButton("🔮 Получить предсказание", callback_data="get_prediction")],
+        [InlineKeyboardButton("📊 Рейтинг", callback_data="show_rating")]
     ])
     
     await update.message.reply_text(
@@ -76,7 +74,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if query.data == 'show_rating':
+    if query.data == "get_prediction":
+        # Создаем инвойс для оплаты звездами
+        prices = [LabeledPrice(label="XTR", amount=100)]  # 1 звезда = 100 единиц
+        
+        await query.message.reply_invoice(
+            title="Предсказание",
+            description="Получите предсказание от магического шара",
+            payload="prediction_payment",
+            provider_token="",  # Для Telegram Stars оставляем пустым
+            currency="XTR",
+            prices=prices
+        )
+    
+    elif query.data == 'show_rating':
         stats = load_stats()
         if not stats:
             await query.message.reply_text("Пока нет данных для рейтинга")
@@ -89,52 +100,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         await query.message.reply_text(rating_text)
 
-async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /balance"""
-    db = next(get_db())
-    user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-    
-    if not user:
-        await update.message.reply_text("Пожалуйста, сначала используйте команду /start")
-        return
-    
-    await update.message.reply_text(f"Ваш баланс: {user.stars} ⭐")
-
-async def addstars(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /addstars (только для админов)"""
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("У вас нет прав для использования этой команды")
-        return
-    
-    if len(context.args) != 2:
-        await update.message.reply_text("Использование: /addstars [user_id] [amount]")
-        return
-    
-    try:
-        user_id = int(context.args[0])
-        amount = int(context.args[1])
-    except ValueError:
-        await update.message.reply_text("Неверный формат ID пользователя или количества звезд")
-        return
-    
-    db = next(get_db())
-    user = db.query(User).filter(User.telegram_id == user_id).first()
-    
-    if not user:
-        await update.message.reply_text("Пользователь не найден")
-        return
-    
-    user.stars += amount
-    db.commit()
-    
-    await update.message.reply_text(
-        f"Добавлено {amount} ⭐ пользователю {user.username or user_id}\n"
-        f"Новый баланс: {user.stars} ⭐"
-    )
+async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик предварительной проверки платежа"""
+    query = update.pre_checkout_query
+    await query.answer(ok=True)
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик успешного платежа"""
     # Получаем предсказание
-    prediction = get_random_prediction()
+    prediction = random.choice(PREDICTIONS)
     
     # Обновляем статистику
     stats = load_stats()
@@ -151,6 +125,13 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         f"Задайте новый вопрос, чтобы получить следующее предсказание!"
     )
 
+async def pay_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик команды /paysupport"""
+    await update.message.reply_text(
+        "Добровольные пожертвования не подразумевают возврат средств, "
+        "однако, если вы очень хотите вернуть средства - свяжитесь с нами."
+    )
+
 def main():
     """Запуск бота"""
     # Инициализация базы данных
@@ -161,11 +142,9 @@ def main():
     
     # Добавление обработчиков команд
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("balance", balance))
-    application.add_handler(CommandHandler("addstars", addstars))
-    
-    # Добавление обработчика кнопок
+    application.add_handler(CommandHandler("paysupport", pay_support))
     application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     
     # Запуск бота
