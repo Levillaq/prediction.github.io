@@ -130,14 +130,25 @@
         .predictions-count {
             color: #FFD700;
         }
+        #user-form {
+            max-width: 350px;
+            margin: 0 auto 20px auto;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="card text-center">
             <h1 class="mb-4">🔮 Магический шар предсказаний</h1>
+            <form id="user-form" class="mb-3">
+                <div class="input-group">
+                    <span class="input-group-text">@</span>
+                    <input type="text" class="form-control" id="username" placeholder="Ваш Telegram username" required>
+                    <button class="btn btn-primary btn-animate" type="submit">Показать баланс</button>
+                </div>
+            </form>
             <div class="mb-3">
-                <span id="balance" class="fs-4">Баланс: 0 <span class="star">⭐️</span></span>
+                <span id="balance" class="fs-4">Баланс: — <span class="star">⭐️</span></span>
             </div>
             <button class="btn btn-warning btn-lg btn-animate mb-3" onclick="payInTelegram()">
                 Оплатить 100 <span class="star">⭐️</span>
@@ -218,79 +229,44 @@
         let tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
         if (tg) tg.expand();
 
-        // Получение user_id из Telegram WebApp initDataUnsafe
-        let user_id = null;
-        let username = null;
-        if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            user_id = tg.initDataUnsafe.user.id;
-            username = tg.initDataUnsafe.user.username || '';
-        } else {
-            user_id = '123456'; // fallback для теста
-            username = 'testuser';
+        let balances = {};
+        let leaderboard = [];
+
+        // Загрузка балансов и рейтинга из balances.json
+        fetch('balances.json')
+            .then(response => response.json())
+            .then(data => {
+                balances = data;
+                leaderboard = Object.entries(balances)
+                    .map(([username, info]) => ({username, stars: info.stars}))
+                    .sort((a, b) => b.stars - a.stars);
+                renderLeaderboard();
+            });
+
+        function renderLeaderboard() {
+            let lb = document.getElementById('leaderboard');
+            lb.innerHTML = '';
+            leaderboard.forEach(u => {
+                let li = document.createElement('li');
+                li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                li.innerHTML = `<span>@${u.username}</span> <span>${u.stars} <span class="star">⭐️</span></span>`;
+                lb.appendChild(li);
+            });
         }
 
-        // Загрузка профиля
-        async function loadProfile() {
-            const res = await fetch(`/api/profile?user_id=${user_id}`);
-            const profile = await res.json();
-            document.querySelector('.balance').textContent = `Баланс: ${profile.stars} ⭐`;
-            document.querySelector('.stat-value.total').textContent = profile.total_predictions;
-            document.querySelector('.stat-value.rank').textContent = profile.rank || '-';
-            document.querySelector('.stat-value.last').textContent = profile.last_prediction_date || '-';
-            document.querySelector('.profile-avatar').src = profile.avatar_url || 'https://via.placeholder.com/80';
-            document.querySelector('.profile-info h3').textContent = profile.username || username;
-        }
-
-        // Загрузка истории
-        async function loadHistory() {
-            const res = await fetch(`/api/history?user_id=${user_id}`);
-            const history = await res.json();
-            const historyBlock = document.querySelector('.history-block');
-            if (historyBlock) {
-                historyBlock.innerHTML = history.map(h => `<div class='prediction'>${h.prediction_text}<br><span class='cooldown'>${h.date}</span></div>`).join('');
-            }
-        }
-
-        // Загрузка топа
-        async function loadLeaderboard() {
-            const res = await fetch('/api/leaderboard');
-            const leaderboard = await res.json();
-            const lbBlock = document.querySelector('.leaderboard');
-            if (lbBlock) {
-                lbBlock.innerHTML = `<h3>🏆 Топ предсказателей</h3>` + leaderboard.map((u, i) => `
-                    <div class="leaderboard-item">
-                        <div class="rank rank-${i+1}">${i+1}</div>
-                        <div class="user-info">
-                            <div class="username">${u.username}</div>
-                            <div class="predictions-count">${u.total_predictions} предсказаний</div>
-                        </div>
-                    </div>`).join('');
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-            loadProfile();
-            loadHistory();
-            loadLeaderboard();
-            const payBtn = document.getElementById('pay-btn');
-            if (payBtn) {
-                payBtn.addEventListener('click', function() {
-                    payBtn.disabled = true;
-                    payBtn.textContent = 'Ожидание оплаты...';
-                    if (tg) {
-                        tg.sendData(JSON.stringify({action: 'get_prediction', user_id: user_id, username: username}));
-                    } else {
-                        alert('Пожалуйста, откройте приложение через Telegram!');
-                        payBtn.disabled = false;
-                        payBtn.textContent = 'Получить предсказание за 100 ⭐';
-                    }
-                });
+        document.getElementById('user-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            let username = document.getElementById('username').value.trim().replace(/^@/, '');
+            if (username in balances) {
+                document.getElementById('balance').innerHTML = `Баланс: ${balances[username].stars} <span class="star">⭐️</span>`;
+            } else {
+                document.getElementById('balance').innerHTML = `Баланс: 0 <span class="star">⭐️</span>`;
             }
         });
 
         function payInTelegram() {
             // Открывает Telegram-бота с командой /pay (или start=pay)
-            window.open('https://t.me/ВАШ_ЮЗЕРНЕЙМ_БОТА?start=pay', '_blank');
+            window.open('https://predskazaniyaabot?start=pay', '_blank');
         }
     </script>
 </body>

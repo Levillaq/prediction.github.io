@@ -11,11 +11,12 @@ import logging
 import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice, Message, PreCheckoutQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 from database import init_db, get_db, User
 from utils import get_random_prediction, can_get_prediction
+from aiogram import F
 
 # Настройка логирования
 logging.basicConfig(
@@ -147,6 +148,38 @@ async def pay_support(message: types.Message):
         "Добровольные пожертвования не подразумевают возврат средств, "
         "однако, если вы очень хотите вернуть средства - свяжитесь с нами."
     )
+
+async def send_invoice_handler(message: Message):
+    prices = [LabeledPrice(label="XTR", amount=100)]
+    await message.answer_invoice(
+        title="Пополнение баланса",
+        description="Пополните баланс на 100 звёзд!",
+        prices=prices,
+        provider_token="",  # Для Telegram Stars оставьте пустым
+        payload="pay_balance",
+        currency="XTR",
+        reply_markup=payment_keyboard(),
+    )
+
+async def pre_checkout_handler(pre_checkout_query: PreCheckoutQuery):
+    await pre_checkout_query.answer(ok=True)
+
+async def success_payment_handler(message: Message):
+    await message.answer(text="🥳 Спасибо за оплату! Ваш баланс будет пополнен в течение нескольких минут.")
+    # Здесь вы вручную обновляете balances.json для пользователя
+
+async def pay_support_handler(message: Message):
+    await message.answer(
+        text="Добровольные пожертвования не подразумевают возврат средств, "
+        "однако, если вы очень хотите вернуть средства - свяжитесь с нами."
+    )
+
+# Регистрация обработчиков
+
+dp.message.register(send_invoice_handler, Command(commands="pay"))
+dp.pre_checkout_query.register(pre_checkout_handler)
+dp.message.register(success_payment_handler, F.successful_payment)
+dp.message.register(pay_support_handler, Command(commands="paysupport"))
 
 async def main():
     """Запуск бота"""
