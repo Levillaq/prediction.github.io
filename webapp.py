@@ -83,7 +83,7 @@ async def get_prediction(request: Request, user_id: int):
     leaderboard = get_leaderboard(db)
     
     return templates.TemplateResponse(
-        "predictionbot.html",
+        "predskazaniyaabot.html",
         {
             "request": request,
             "user": {
