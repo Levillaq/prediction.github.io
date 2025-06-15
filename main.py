@@ -4,21 +4,13 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 import os
-import logging
 import json
 import random
-from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, LabeledPrice, PreCheckoutQuery
-from telegram.ext import (
-    Application, 
-    CommandHandler, 
-    ContextTypes, 
-    CallbackQueryHandler,
-    MessageHandler,
-    filters,
-    PreCheckoutQueryHandler
-)
-from telegram import InlineKeyboardBuilder
+import asyncio
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 from database import init_db, get_db, User
 from utils import get_random_prediction, can_get_prediction
@@ -32,9 +24,10 @@ logger = logging.getLogger(__name__)
 
 # Загрузка переменных окружения
 load_dotenv()
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
-WEBAPP_URL = "https://levillaq.github.io/prediction.github.io/"  # Обновленный URL
+
+# Инициализация бота и диспетчера
+bot = Bot(token=os.getenv('BOT_TOKEN'))
+dp = Dispatcher()
 
 # Загрузка предсказаний
 with open('static/predictions.json', 'r', encoding='utf-8') as f:
@@ -54,65 +47,80 @@ def save_stats(stats):
 
 def payment_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(text="Оплатить 100 ⭐️", pay=True)
+    builder.button(
+        text="Оплатить 100 ⭐️",
+        pay=True,
+        invoice=types.Invoice(
+            title="Предсказание",
+            description="Получите ваше предсказание",
+            currency="XTR",  # Валюта Telegram Stars
+            prices=[LabeledPrice(label="Предсказание", amount=100)],
+            start_parameter="prediction",
+            need_name=False,
+            need_phone_number=False,
+            need_email=False,
+            need_shipping_address=False,
+            is_flexible=False
+        )
+    )
     return builder.as_markup()
 
 # Получение случайного предсказания
 def get_random_prediction():
     return random.choice(PREDICTIONS)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
     """Обработчик команды /start"""
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔮 Открыть предсказания", web_app=WebAppInfo(url="https://levillaq.github.io/prediction.github.io/"))],
-        [InlineKeyboardButton("📊 Рейтинг", callback_data="show_rating")]
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔮 Получить предсказание", web_app=WebAppInfo(url="https://levillaq.github.io/prediction.github.io/"))],
+        [InlineKeyboardButton(text="📊 Рейтинг", callback_data="show_rating")]
     ])
     
-    await update.message.reply_text(
-        "Привет! Я бот предсказаний. Нажмите кнопку ниже, чтобы открыть веб-приложение и получить предсказание!",
+    await message.answer(
+        "Привет! Я бот предсказаний. Нажмите кнопку ниже, чтобы получить предсказание!",
         reply_markup=keyboard
     )
 
-async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик нажатий на кнопки"""
-    query = update.callback_query
-    await query.answer()
+@dp.callback_query(lambda c: c.data == "show_rating")
+async def show_rating(callback: types.CallbackQuery):
+    """Обработчик показа рейтинга"""
+    stats = load_stats()
+    if not stats:
+        await callback.message.answer("Пока нет данных для рейтинга")
+        return
+
+    sorted_users = sorted(stats.items(), key=lambda x: x[1]['count'], reverse=True)
+    rating_text = "📊 Топ пользователей:\n\n"
+    for i, (username, data) in enumerate(sorted_users[:10], 1):
+        rating_text += f"{i}. @{username}: {data['count']} предсказаний\n"
     
-    if query.data == 'show_rating':
-        stats = load_stats()
-        if not stats:
-            await query.message.reply_text("Пока нет данных для рейтинга")
-            return
+    await callback.message.answer(rating_text)
+    await callback.answer()
 
-        sorted_users = sorted(stats.items(), key=lambda x: x[1]['count'], reverse=True)
-        rating_text = "📊 Топ пользователей:\n\n"
-        for i, (username, data) in enumerate(sorted_users[:10], 1):
-            rating_text += f"{i}. @{username}: {data['count']} предсказаний\n"
-        
-        await query.message.reply_text(rating_text)
-
-async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@dp.message(lambda message: message.web_app_data is not None)
+async def web_app_data(message: types.Message):
     """Обработчик данных от веб-приложения"""
     try:
-        data = json.loads(update.effective_message.web_app_data.data)
+        data = json.loads(message.web_app_data.data)
         
         if data.get('action') == 'get_prediction':
             # Отправляем сообщение с кнопкой оплаты
-            await update.message.reply_text(
-                f"Вопрос: {data.get('question', 'Без вопроса')}\n\n"
+            await message.answer(
                 "Нажмите кнопку ниже для оплаты:",
                 reply_markup=payment_keyboard()
             )
     except Exception as e:
         print(f"Ошибка при обработке данных веб-приложения: {e}")
-        await update.message.reply_text("Произошла ошибка при обработке запроса. Попробуйте позже.")
+        await message.answer("Произошла ошибка при обработке запроса. Попробуйте позже.")
 
-async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@dp.pre_checkout_query()
+async def process_pre_checkout_query(pre_checkout_query: types.PreCheckoutQuery):
     """Обработчик предварительной проверки платежа"""
-    query = update.pre_checkout_query
-    await query.answer(ok=True)
+    await pre_checkout_query.answer(ok=True)
 
-async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@dp.message(lambda message: message.successful_payment is not None)
+async def successful_payment(message: types.Message):
     """Обработчик успешного платежа"""
     try:
         # Получаем предсказание
@@ -120,7 +128,7 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         # Обновляем статистику
         stats = load_stats()
-        user = update.effective_user.username or str(update.effective_user.id)
+        user = message.from_user.username or str(message.from_user.id)
         
         if user not in stats:
             stats[user] = {'count': 0}
@@ -128,41 +136,28 @@ async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE)
         save_stats(stats)
         
         # Отправляем предсказание
-        await update.message.reply_text(
+        await message.answer(
             f"✨ Ваше предсказание:\n\n{prediction}\n\n"
-            f"Задайте новый вопрос, чтобы получить следующее предсказание!"
+            f"Нажмите кнопку 'Получить предсказание' для следующего предсказания!"
         )
     except Exception as e:
         print(f"Ошибка при обработке платежа: {e}")
-        await update.message.reply_text("Произошла ошибка при обработке платежа. Пожалуйста, обратитесь в поддержку.")
+        await message.answer("Произошла ошибка при обработке платежа. Пожалуйста, обратитесь в поддержку.")
 
-async def pay_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
+@dp.message(Command("paysupport"))
+async def pay_support(message: types.Message):
     """Обработчик команды /paysupport"""
-    await update.message.reply_text(
+    await message.answer(
         "Добровольные пожертвования не подразумевают возврат средств, "
         "однако, если вы очень хотите вернуть средства - свяжитесь с нами."
     )
 
-def main():
+async def main():
     """Запуск бота"""
-    # Инициализация базы данных
-    init_db()
-    
-    # Создание приложения
-    application = Application.builder().token(BOT_TOKEN).build()
-    
-    # Добавление обработчиков команд
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("paysupport", pay_support))
-    application.add_handler(CallbackQueryHandler(button_callback))
-    application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
-    application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
-    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
-    
     # Запуск бота
-    application.run_polling()
+    await dp.start_polling(bot)
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/

@@ -27,25 +27,18 @@
         }
         .prediction-form {
             margin-top: 20px;
-        }
-        textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-bottom: 10px;
-            resize: vertical;
-            min-height: 100px;
+            text-align: center;
         }
         button {
             background: #2a5885;
             color: white;
             border: none;
-            padding: 10px 20px;
+            padding: 15px 30px;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 18px;
             width: 100%;
-            font-size: 16px;
+            margin-top: 20px;
         }
         button:hover {
             background: #1e3c5a;
@@ -53,13 +46,6 @@
         button:disabled {
             background: #ccc;
             cursor: not-allowed;
-        }
-        .prediction-result {
-            margin-top: 20px;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 5px;
-            display: none;
         }
         .cooldown {
             text-align: center;
@@ -83,12 +69,9 @@
     <div class="container">
         <h1>🔮 Магический шар предсказаний</h1>
         <div class="prediction-form">
-            <textarea id="question" placeholder="Задайте свой вопрос..."></textarea>
             <button id="predictionButton" onclick="getPrediction()">Получить предсказание за 100⭐</button>
             <div id="cooldown" class="cooldown"></div>
         </div>
-        <div id="prediction" class="prediction-result"></div>
-        <a href="rating.html" class="rating-link">Посмотреть рейтинг предсказаний</a>
     </div>
 
     <script>
@@ -121,16 +104,9 @@
         checkCooldown();
 
         function getPrediction() {
-            const question = document.getElementById('question').value.trim();
-            if (!question) {
-                alert('Пожалуйста, задайте вопрос');
-                return;
-            }
-
             // Отправляем данные в бота
             tg.sendData(JSON.stringify({
-                action: 'get_prediction',
-                question: question
+                action: 'get_prediction'
             }));
 
             // Устанавливаем кулдаун
