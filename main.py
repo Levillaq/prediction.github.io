@@ -8,6 +8,7 @@ import json
 import random
 import asyncio
 import logging
+import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo, LabeledPrice
@@ -48,22 +49,7 @@ def save_stats(stats):
 
 def payment_keyboard():
     builder = InlineKeyboardBuilder()
-    builder.button(
-        text="Оплатить 100 ⭐️",
-        pay=True,
-        invoice=types.Invoice(
-            title="Предсказание",
-            description="Получите ваше предсказание",
-            currency="XTR",  # Валюта Telegram Stars
-            prices=[LabeledPrice(label="Предсказание", amount=100)],
-            start_parameter="prediction",
-            need_name=False,
-            need_phone_number=False,
-            need_email=False,
-            need_shipping_address=False,
-            is_flexible=False
-        )
-    )
+    builder.button(text="Оплатить 100 ⭐️", pay=True)
     return builder.as_markup()
 
 # Получение случайного предсказания
@@ -103,8 +89,10 @@ async def show_rating(callback: types.CallbackQuery):
 async def web_app_data(message: types.Message):
     """Обработчик данных от веб-приложения"""
     try:
-        data = json.loads(message.web_app_data.data)
-        
+        # Гарантируем, что данные приходят в формате JSON
+        data = message.web_app_data.data
+        if isinstance(data, str):
+            data = json.loads(data)
         if data.get('action') == 'get_prediction':
             # Отправляем сообщение с кнопкой оплаты
             await message.answer(
@@ -124,18 +112,25 @@ async def process_pre_checkout_query(pre_checkout_query: types.PreCheckoutQuery)
 async def successful_payment(message: types.Message):
     """Обработчик успешного платежа"""
     try:
+        # Пополнение баланса пользователя в Flask API
+        user_id = str(message.from_user.id)
+        stars = message.successful_payment.total_amount  # Обычно в XTR, если 100 XTR = 100
+        try:
+            requests.post('http://localhost:8000/api/add_stars', json={
+                'user_id': user_id,
+                'stars': stars
+            })
+        except Exception as e:
+            print(f"Ошибка при пополнении баланса через API: {e}")
         # Получаем предсказание
         prediction = random.choice(PREDICTIONS)
-        
         # Обновляем статистику
         stats = load_stats()
         user = message.from_user.username or str(message.from_user.id)
-        
         if user not in stats:
             stats[user] = {'count': 0}
         stats[user]['count'] += 1
         save_stats(stats)
-        
         # Отправляем предсказание
         await message.answer(
             f"✨ Ваше предсказание:\n\n{prediction}\n\n"
