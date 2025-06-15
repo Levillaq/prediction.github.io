@@ -87,23 +87,28 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик данных от веб-приложения"""
-    data = json.loads(update.effective_message.web_app_data.data)
-    
-    if data.get('action') == 'get_prediction':
-        # Создаем инвойс для оплаты звездами
-        prices = [LabeledPrice(label="XTR", amount=100)]  # 1 звезда = 100 единиц
+    try:
+        data = json.loads(update.effective_message.web_app_data.data)
         
-        await update.message.reply_invoice(
-            title="Предсказание",
-            description="Получите предсказание от магического шара",
-            payload=json.dumps({
-                'action': 'prediction',
-                'user_id': update.effective_user.id
-            }),
-            provider_token="",  # Для Telegram Stars оставляем пустым
-            currency="XTR",
-            prices=prices
-        )
+        if data.get('action') == 'get_prediction':
+            # Создаем инвойс для оплаты звездами
+            prices = [LabeledPrice(label="XTR", amount=100)]  # 1 звезда = 100 единиц
+            
+            await update.message.reply_invoice(
+                title="Предсказание",
+                description=f"Вопрос: {data.get('question', 'Без вопроса')}",
+                payload=json.dumps({
+                    'action': 'prediction',
+                    'user_id': update.effective_user.id,
+                    'question': data.get('question', '')
+                }),
+                provider_token="",  # Для Telegram Stars оставляем пустым
+                currency="XTR",
+                prices=prices
+            )
+    except Exception as e:
+        print(f"Ошибка при обработке данных веб-приложения: {e}")
+        await update.message.reply_text("Произошла ошибка при обработке запроса. Попробуйте позже.")
 
 async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик предварительной проверки платежа"""
@@ -112,23 +117,30 @@ async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик успешного платежа"""
-    # Получаем предсказание
-    prediction = random.choice(PREDICTIONS)
-    
-    # Обновляем статистику
-    stats = load_stats()
-    user = update.effective_user.username or str(update.effective_user.id)
-    
-    if user not in stats:
-        stats[user] = {'count': 0}
-    stats[user]['count'] += 1
-    save_stats(stats)
-    
-    # Отправляем предсказание
-    await update.message.reply_text(
-        f"✨ Ваше предсказание:\n\n{prediction}\n\n"
-        f"Задайте новый вопрос, чтобы получить следующее предсказание!"
-    )
+    try:
+        # Получаем данные из payload
+        payload = json.loads(update.message.successful_payment.invoice_payload)
+        
+        # Получаем предсказание
+        prediction = random.choice(PREDICTIONS)
+        
+        # Обновляем статистику
+        stats = load_stats()
+        user = update.effective_user.username or str(update.effective_user.id)
+        
+        if user not in stats:
+            stats[user] = {'count': 0}
+        stats[user]['count'] += 1
+        save_stats(stats)
+        
+        # Отправляем предсказание
+        await update.message.reply_text(
+            f"✨ Ваше предсказание:\n\n{prediction}\n\n"
+            f"Задайте новый вопрос, чтобы получить следующее предсказание!"
+        )
+    except Exception as e:
+        print(f"Ошибка при обработке платежа: {e}")
+        await update.message.reply_text("Произошла ошибка при обработке платежа. Пожалуйста, обратитесь в поддержку.")
 
 async def pay_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /paysupport"""

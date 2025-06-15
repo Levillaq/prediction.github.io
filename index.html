@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Шар Предсказаний</title>
+    <title>Предсказания</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
@@ -180,18 +180,65 @@
                 transform: rotate(360deg);
             }
         }
+
+        .prediction-form {
+            margin-top: 20px;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            resize: vertical;
+            min-height: 100px;
+        }
+        button {
+            background: #2a5885;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #1e3c5a;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .prediction-result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            display: none;
+        }
+        .cooldown {
+            text-align: center;
+            color: #666;
+            margin-top: 10px;
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="logo">🔮</div>
-        <h1>Шар Предсказаний</h1>
+        <div class="logo">��</div>
+        <h1>🔮 Магический шар предсказаний</h1>
         <p class="description">
             Задайте вопрос и получите предсказание от магического шара.
             Каждое предсказание стоит 1 звезду.
         </p>
-        <div id="prediction" class="prediction"></div>
-        <button id="getPrediction" class="button">Получить предсказание</button>
+        <div class="prediction-form">
+            <textarea id="question" placeholder="Задайте свой вопрос..."></textarea>
+            <button id="predictionButton" onclick="getPrediction()">Получить предсказание за 1 звезду</button>
+            <div id="cooldown" class="cooldown"></div>
+        </div>
+        <div id="prediction" class="prediction-result"></div>
         <a href="rating.html" class="rating-link">Посмотреть рейтинг предсказаний</a>
     </div>
 
@@ -202,68 +249,56 @@
     </div>
 
     <script>
-        // Инициализация Telegram WebApp
-        const tg = window.Telegram.WebApp;
+        let tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Загрузка предсказаний
-        let predictions = [];
-        fetch('static/predictions.json')
-            .then(response => response.json())
-            .then(data => {
-                predictions = data;
-            })
-            .catch(error => console.error('Ошибка загрузки предсказаний:', error));
-
-        // Получение случайного предсказания
-        function getRandomPrediction() {
-            const randomIndex = Math.floor(Math.random() * predictions.length);
-            return predictions[randomIndex];
+        // Проверяем кулдаун при загрузке
+        function checkCooldown() {
+            const lastPrediction = localStorage.getItem('lastPrediction');
+            if (lastPrediction) {
+                const now = new Date().getTime();
+                const timeLeft = 24 * 60 * 60 * 1000 - (now - parseInt(lastPrediction));
+                
+                if (timeLeft > 0) {
+                    const hours = Math.floor(timeLeft / (60 * 60 * 1000));
+                    const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+                    document.getElementById('cooldown').textContent = 
+                        `Следующее предсказание будет доступно через ${hours}ч ${minutes}м`;
+                    document.getElementById('predictionButton').disabled = true;
+                } else {
+                    localStorage.removeItem('lastPrediction');
+                    document.getElementById('cooldown').textContent = '';
+                    document.getElementById('predictionButton').disabled = false;
+                }
+            }
         }
 
-        // Обработка нажатия на кнопку
-        document.getElementById('getPrediction').addEventListener('click', async () => {
-            const button = document.getElementById('getPrediction');
-            button.disabled = true;
-            button.textContent = 'Обработка...';
+        // Проверяем кулдаун каждую минуту
+        setInterval(checkCooldown, 60000);
+        checkCooldown();
 
-            try {
-                // Запрос на покупку через Telegram Wallet
-                const result = await tg.showPopup({
-                    title: 'Получить предсказание',
-                    message: 'Стоимость: 1 звезда',
-                    buttons: [
-                        {id: 'buy', type: 'buy', text: 'Купить за 1 ⭐'},
-                        {id: 'cancel', type: 'cancel', text: 'Отмена'}
-                    ]
-                });
-
-                if (result === 'buy') {
-                    // Показываем предсказание
-                    const prediction = getRandomPrediction();
-                    const predictionElement = document.getElementById('prediction');
-                    predictionElement.textContent = prediction;
-                    predictionElement.classList.add('show');
-
-                    // Сохраняем статистику
-                    const username = tg.initDataUnsafe?.user?.username || 'anonymous';
-                    const accounts = JSON.parse(localStorage.getItem('accounts') || '[]');
-                    const accountIndex = accounts.findIndex(acc => acc.username === username);
-                    
-                    if (accountIndex === -1) {
-                        accounts.push({ username, count: 1 });
-                    } else {
-                        accounts[accountIndex].count++;
-                    }
-                    
-                    localStorage.setItem('accounts', JSON.stringify(accounts));
-                }
-            } catch (error) {
-                console.error('Ошибка при покупке:', error);
-            } finally {
-                button.disabled = false;
-                button.textContent = 'Получить предсказание';
+        function getPrediction() {
+            const question = document.getElementById('question').value.trim();
+            if (!question) {
+                alert('Пожалуйста, задайте вопрос');
+                return;
             }
+
+            // Отправляем данные в бота
+            tg.sendData(JSON.stringify({
+                action: 'get_prediction',
+                question: question
+            }));
+
+            // Устанавливаем кулдаун
+            localStorage.setItem('lastPrediction', new Date().getTime().toString());
+            document.getElementById('predictionButton').disabled = true;
+            document.getElementById('cooldown').textContent = 'Следующее предсказание будет доступно через 24 часа';
+        }
+
+        // Обработка ответа от бота
+        tg.onEvent('mainButtonClicked', function() {
+            tg.close();
         });
     </script>
 </body>
