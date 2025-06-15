@@ -57,15 +57,13 @@ def get_random_prediction():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
-    user = update.effective_user
-    
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔮 Получить предсказание", callback_data="get_prediction")],
+        [InlineKeyboardButton("🔮 Открыть предсказания", web_app=WebAppInfo(url="https://levillaq.github.io/prediction.github.io/"))],
         [InlineKeyboardButton("📊 Рейтинг", callback_data="show_rating")]
     ])
     
     await update.message.reply_text(
-        "Привет! Я бот предсказаний. Задай вопрос и получи предсказание за 1 звезду!",
+        "Привет! Я бот предсказаний. Нажмите кнопку ниже, чтобы открыть веб-приложение и получить предсказание!",
         reply_markup=keyboard
     )
 
@@ -74,20 +72,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if query.data == "get_prediction":
-        # Создаем инвойс для оплаты звездами
-        prices = [LabeledPrice(label="XTR", amount=100)]  # 1 звезда = 100 единиц
-        
-        await query.message.reply_invoice(
-            title="Предсказание",
-            description="Получите предсказание от магического шара",
-            payload="prediction_payment",
-            provider_token="",  # Для Telegram Stars оставляем пустым
-            currency="XTR",
-            prices=prices
-        )
-    
-    elif query.data == 'show_rating':
+    if query.data == 'show_rating':
         stats = load_stats()
         if not stats:
             await query.message.reply_text("Пока нет данных для рейтинга")
@@ -99,6 +84,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rating_text += f"{i}. @{username}: {data['count']} предсказаний\n"
         
         await query.message.reply_text(rating_text)
+
+async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработчик данных от веб-приложения"""
+    data = json.loads(update.effective_message.web_app_data.data)
+    
+    if data.get('action') == 'get_prediction':
+        # Создаем инвойс для оплаты звездами
+        prices = [LabeledPrice(label="XTR", amount=100)]  # 1 звезда = 100 единиц
+        
+        await update.message.reply_invoice(
+            title="Предсказание",
+            description="Получите предсказание от магического шара",
+            payload=json.dumps({
+                'action': 'prediction',
+                'user_id': update.effective_user.id
+            }),
+            provider_token="",  # Для Telegram Stars оставляем пустым
+            currency="XTR",
+            prices=prices
+        )
 
 async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик предварительной проверки платежа"""
@@ -144,6 +149,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("paysupport", pay_support))
     application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data))
     application.add_handler(PreCheckoutQueryHandler(pre_checkout_handler))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     
