@@ -5,6 +5,8 @@
 
 import os
 import logging
+import json
+import random
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from telegram.ext import (
@@ -32,30 +34,40 @@ BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_IDS = [int(id) for id in os.getenv('ADMIN_IDS', '').split(',') if id]
 WEBAPP_URL = "https://levillaq.github.io/prediction.github.io/"  # Обновленный URL
 
+# Загрузка предсказаний
+with open('static/predictions.json', 'r', encoding='utf-8') as f:
+    PREDICTIONS = json.load(f)
+
+# Загрузка статистики
+def load_stats():
+    try:
+        with open('stats.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+def save_stats(stats):
+    with open('stats.json', 'w', encoding='utf-8') as f:
+        json.dump(stats, f, ensure_ascii=False, indent=2)
+
+# Получение случайного предсказания
+def get_random_prediction():
+    return random.choice(PREDICTIONS)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
-    db = next(get_db())
-    user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-    
-    if not user:
-        user = User(
-            telegram_id=update.effective_user.id,
-            username=update.effective_user.username,
-            stars=0
-        )
-        db.add(user)
-        db.commit()
+    user = update.effective_user
     
     keyboard = InlineKeyboardMarkup([
         [InlineKeyboardButton(
             "🔮 Получить предсказание",
-            web_app=WebAppInfo(url=f"{WEBAPP_URL}?user_id={user.telegram_id}")
-        )]
+            web_app=WebAppInfo(url=f"{WEBAPP_URL}?user_id={user.id}")
+        )],
+        [InlineKeyboardButton("📊 Рейтинг", callback_data='show_rating')]
     ])
     
     await update.message.reply_text(
-        f"Привет, {update.effective_user.first_name}! 👋\n\n"
-        f"Я бот предсказаний. Нажмите на кнопку ниже, чтобы получить предсказание.",
+        "Привет! Я бот предсказаний. Задай вопрос и получи предсказание за 1 звезду!",
         reply_markup=keyboard
     )
 
@@ -64,50 +76,18 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    if query.data == "get_prediction":
-        db = next(get_db())
-        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-        
-        if not user:
-            await query.message.reply_text("Пожалуйста, сначала используйте команду /start")
+    if query.data == 'show_rating':
+        stats = load_stats()
+        if not stats:
+            await query.message.reply_text("Пока нет данных для рейтинга")
             return
+
+        sorted_users = sorted(stats.items(), key=lambda x: x[1]['count'], reverse=True)
+        rating_text = "📊 Топ пользователей:\n\n"
+        for i, (username, data) in enumerate(sorted_users[:10], 1):
+            rating_text += f"{i}. @{username}: {data['count']} предсказаний\n"
         
-        # Проверка кулдауна
-        can_predict, time_remaining = can_get_prediction(user.last_prediction_time)
-        if not can_predict:
-            await query.message.reply_text(
-                f"Подождите еще {time_remaining} перед следующим предсказанием"
-            )
-            return
-        
-        # Создаем кнопку оплаты
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("💫 Оплатить 100 ⭐", callback_data="pay_prediction")]
-        ])
-        
-        await query.message.reply_text(
-            "Получить предсказание стоит 100 ⭐\n"
-            "Нажмите на кнопку ниже, чтобы оплатить:",
-            reply_markup=keyboard
-        )
-    
-    elif query.data == "pay_prediction":
-        # Здесь будет интеграция с Telegram Stars
-        # Пока просто выдаем предсказание
-        prediction = get_random_prediction()
-        
-        # Обновляем время последнего предсказания
-        db = next(get_db())
-        user = db.query(User).filter(User.telegram_id == update.effective_user.id).first()
-        if user:
-            user.last_prediction_time = datetime.utcnow()
-            db.commit()
-        
-        await query.message.reply_text(
-            f"🔮 Ваше предсказание:\n\n"
-            f"{prediction}\n\n"
-            f"Следующее предсказание будет доступно через 24 часа."
-        )
+        await query.message.reply_text(rating_text)
 
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /balance"""
@@ -152,6 +132,25 @@ async def addstars(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Новый баланс: {user.stars} ⭐"
     )
 
+async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Получаем предсказание
+    prediction = get_random_prediction()
+    
+    # Обновляем статистику
+    stats = load_stats()
+    user = update.effective_user.username or str(update.effective_user.id)
+    
+    if user not in stats:
+        stats[user] = {'count': 0}
+    stats[user]['count'] += 1
+    save_stats(stats)
+    
+    # Отправляем предсказание
+    await update.message.reply_text(
+        f"✨ Ваше предсказание:\n\n{prediction}\n\n"
+        f"Задайте новый вопрос, чтобы получить следующее предсказание!"
+    )
+
 def main():
     """Запуск бота"""
     # Инициализация базы данных
@@ -167,6 +166,7 @@ def main():
     
     # Добавление обработчика кнопок
     application.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment))
     
     # Запуск бота
     application.run_polling()

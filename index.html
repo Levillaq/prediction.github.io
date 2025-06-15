@@ -228,13 +228,13 @@
             button.textContent = 'Обработка...';
 
             try {
-                // Запрос на покупку звезды
+                // Запрос на покупку через Telegram Wallet
                 const result = await tg.showPopup({
                     title: 'Получить предсказание',
                     message: 'Стоимость: 1 звезда',
                     buttons: [
-                        {id: 'buy', type: 'buy'},
-                        {id: 'cancel', type: 'cancel'}
+                        {id: 'buy', type: 'buy', text: 'Купить за 1 ⭐'},
+                        {id: 'cancel', type: 'cancel', text: 'Отмена'}
                     ]
                 });
 
