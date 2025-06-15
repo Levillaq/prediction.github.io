@@ -58,12 +58,11 @@ def get_random_prediction():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔮 Открыть предсказания", web_app=WebAppInfo(url="https://levillaq.github.io/prediction.github.io/"))],
-        [InlineKeyboardButton("📊 Рейтинг", callback_data="show_rating")]
+        [InlineKeyboardButton("Get Daily Prediction 🔮", web_app=WebAppInfo(url="https://levillaq.github.io/prediction.github.io/"))]
     ])
     
     await update.message.reply_text(
-        "Привет! Я бот предсказаний. Нажмите кнопку ниже, чтобы открыть веб-приложение и получить предсказание!",
+        "Welcome to Daily Prediction Bot! Click the button below to get your daily prediction.",
         reply_markup=keyboard
     )
 
@@ -91,24 +90,25 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = json.loads(update.effective_message.web_app_data.data)
         
         if data.get('action') == 'get_prediction':
-            # Создаем инвойс для оплаты звездами
-            prices = [LabeledPrice(label="XTR", amount=100)]  # 1 звезда = 100 единиц
+            # Получаем предсказание
+            prediction = random.choice(PREDICTIONS)
             
-            await update.message.reply_invoice(
-                title="Предсказание",
-                description=f"Вопрос: {data.get('question', 'Без вопроса')}",
-                payload=json.dumps({
-                    'action': 'prediction',
-                    'user_id': update.effective_user.id,
-                    'question': data.get('question', '')
-                }),
-                provider_token="",  # Для Telegram Stars оставляем пустым
-                currency="XTR",
-                prices=prices
+            # Обновляем статистику
+            stats = load_stats()
+            user = update.effective_user.username or str(update.effective_user.id)
+            
+            if user not in stats:
+                stats[user] = {'count': 0}
+            stats[user]['count'] += 1
+            save_stats(stats)
+            
+            # Отправляем предсказание
+            await update.message.reply_text(
+                f"✨ Your daily prediction:\n\n{prediction}"
             )
     except Exception as e:
-        print(f"Ошибка при обработке данных веб-приложения: {e}")
-        await update.message.reply_text("Произошла ошибка при обработке запроса. Попробуйте позже.")
+        print(f"Error processing web app data: {e}")
+        await update.message.reply_text("An error occurred. Please try again later.")
 
 async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик предварительной проверки платежа"""
