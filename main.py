@@ -18,6 +18,7 @@ from telegram.ext import (
     filters,
     PreCheckoutQueryHandler
 )
+from telegram import InlineKeyboardBuilder
 from dotenv import load_dotenv
 from database import init_db, get_db, User
 from utils import get_random_prediction, can_get_prediction
@@ -51,6 +52,11 @@ def save_stats(stats):
     with open('stats.json', 'w', encoding='utf-8') as f:
         json.dump(stats, f, ensure_ascii=False, indent=2)
 
+def payment_keyboard():
+    builder = InlineKeyboardBuilder()
+    builder.button(text="Оплатить 100 ⭐️", pay=True)
+    return builder.as_markup()
+
 # Получение случайного предсказания
 def get_random_prediction():
     return random.choice(PREDICTIONS)
@@ -58,11 +64,12 @@ def get_random_prediction():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Get Daily Prediction 🔮", web_app=WebAppInfo(url="https://levillaq.github.io/prediction.github.io/"))]
+        [InlineKeyboardButton("🔮 Открыть предсказания", web_app=WebAppInfo(url="https://levillaq.github.io/prediction.github.io/"))],
+        [InlineKeyboardButton("📊 Рейтинг", callback_data="show_rating")]
     ])
     
     await update.message.reply_text(
-        "Welcome to Daily Prediction Bot! Click the button below to get your daily prediction.",
+        "Привет! Я бот предсказаний. Нажмите кнопку ниже, чтобы открыть веб-приложение и получить предсказание!",
         reply_markup=keyboard
     )
 
@@ -90,25 +97,15 @@ async def web_app_data(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data = json.loads(update.effective_message.web_app_data.data)
         
         if data.get('action') == 'get_prediction':
-            # Получаем предсказание
-            prediction = random.choice(PREDICTIONS)
-            
-            # Обновляем статистику
-            stats = load_stats()
-            user = update.effective_user.username or str(update.effective_user.id)
-            
-            if user not in stats:
-                stats[user] = {'count': 0}
-            stats[user]['count'] += 1
-            save_stats(stats)
-            
-            # Отправляем предсказание
+            # Отправляем сообщение с кнопкой оплаты
             await update.message.reply_text(
-                f"✨ Your daily prediction:\n\n{prediction}"
+                f"Вопрос: {data.get('question', 'Без вопроса')}\n\n"
+                "Нажмите кнопку ниже для оплаты:",
+                reply_markup=payment_keyboard()
             )
     except Exception as e:
-        print(f"Error processing web app data: {e}")
-        await update.message.reply_text("An error occurred. Please try again later.")
+        print(f"Ошибка при обработке данных веб-приложения: {e}")
+        await update.message.reply_text("Произошла ошибка при обработке запроса. Попробуйте позже.")
 
 async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик предварительной проверки платежа"""
@@ -118,9 +115,6 @@ async def pre_checkout_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def successful_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик успешного платежа"""
     try:
-        # Получаем данные из payload
-        payload = json.loads(update.message.successful_payment.invoice_payload)
-        
         # Получаем предсказание
         prediction = random.choice(PREDICTIONS)
         

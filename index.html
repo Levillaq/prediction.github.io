@@ -3,117 +3,99 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Prediction</title>
+    <title>Предсказания</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0;
-            background: #f0f2f5;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 400px;
             padding: 20px;
-            text-align: center;
+            background: #f0f2f5;
+            color: #333;
         }
-
-        .logo {
-            font-size: 64px;
-            margin-bottom: 20px;
-            animation: float 3s ease-in-out infinite;
-        }
-
-        @keyframes float {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
-        }
-
-        .title {
-            font-size: 24px;
-            color: #2a5885;
-            margin-bottom: 30px;
-        }
-
-        .prediction {
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
             background: white;
             padding: 20px;
-            border-radius: 12px;
-            margin: 20px 0;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            display: none;
-            animation: fadeIn 0.5s ease-out;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        h1 {
+            text-align: center;
+            color: #2a5885;
         }
-
-        .button {
+        .prediction-form {
+            margin-top: 20px;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            resize: vertical;
+            min-height: 100px;
+        }
+        button {
             background: #2a5885;
             color: white;
             border: none;
-            padding: 15px 30px;
-            border-radius: 8px;
-            font-size: 18px;
+            padding: 10px 20px;
+            border-radius: 5px;
             cursor: pointer;
             width: 100%;
-            transition: background 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
+            font-size: 16px;
         }
-
-        .button:hover {
+        button:hover {
             background: #1e3c5a;
         }
-
-        .button:disabled {
+        button:disabled {
             background: #ccc;
             cursor: not-allowed;
         }
-
+        .prediction-result {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            display: none;
+        }
         .cooldown {
-            margin-top: 15px;
+            text-align: center;
             color: #666;
+            margin-top: 10px;
             font-size: 14px;
         }
-
-        .error {
-            color: #dc3545;
-            margin-top: 15px;
-            display: none;
+        .rating-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            color: #2a5885;
+            text-decoration: none;
+        }
+        .rating-link:hover {
+            text-decoration: underline;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="logo">🔮</div>
-        <div class="title">Daily Prediction</div>
-        
-        <button id="paymentButton" class="button" onclick="initiatePayment()">
-            <span>Pay 100⭐</span>
-        </button>
-        
-        <div id="cooldown" class="cooldown"></div>
-        <div id="error" class="error"></div>
-        <div id="prediction" class="prediction"></div>
+        <h1>🔮 Магический шар предсказаний</h1>
+        <div class="prediction-form">
+            <textarea id="question" placeholder="Задайте свой вопрос..."></textarea>
+            <button id="predictionButton" onclick="getPrediction()">Получить предсказание за 100⭐</button>
+            <div id="cooldown" class="cooldown"></div>
+        </div>
+        <div id="prediction" class="prediction-result"></div>
+        <a href="rating.html" class="rating-link">Посмотреть рейтинг предсказаний</a>
     </div>
 
     <script>
-        const tg = window.Telegram.WebApp;
+        let tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Проверка кулдауна при загрузке
+        // Проверяем кулдаун при загрузке
         function checkCooldown() {
             const lastPrediction = localStorage.getItem('lastPrediction');
             if (lastPrediction) {
@@ -121,78 +103,46 @@
                 const timeLeft = 24 * 60 * 60 * 1000 - (now - parseInt(lastPrediction));
                 
                 if (timeLeft > 0) {
-                    updateCooldownDisplay(timeLeft);
-                    document.getElementById('paymentButton').disabled = true;
+                    const hours = Math.floor(timeLeft / (60 * 60 * 1000));
+                    const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+                    document.getElementById('cooldown').textContent = 
+                        `Следующее предсказание будет доступно через ${hours}ч ${minutes}м`;
+                    document.getElementById('predictionButton').disabled = true;
                 } else {
                     localStorage.removeItem('lastPrediction');
                     document.getElementById('cooldown').textContent = '';
-                    document.getElementById('paymentButton').disabled = false;
+                    document.getElementById('predictionButton').disabled = false;
                 }
             }
         }
 
-        function updateCooldownDisplay(timeLeft) {
-            const hours = Math.floor(timeLeft / (60 * 60 * 1000));
-            const minutes = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
-            document.getElementById('cooldown').textContent = 
-                `Next prediction available in ${hours}h ${minutes}m`;
-        }
+        // Проверяем кулдаун каждую минуту
+        setInterval(checkCooldown, 60000);
+        checkCooldown();
 
-        // Обновление кулдауна каждую минуту
-        setInterval(() => {
-            const lastPrediction = localStorage.getItem('lastPrediction');
-            if (lastPrediction) {
-                const now = new Date().getTime();
-                const timeLeft = 24 * 60 * 60 * 1000 - (now - parseInt(lastPrediction));
-                if (timeLeft > 0) {
-                    updateCooldownDisplay(timeLeft);
-                } else {
-                    checkCooldown();
-                }
+        function getPrediction() {
+            const question = document.getElementById('question').value.trim();
+            if (!question) {
+                alert('Пожалуйста, задайте вопрос');
+                return;
             }
-        }, 60000);
 
-        async function initiatePayment() {
-            try {
-                const result = await tg.openInvoice({
-                    title: "Daily Prediction",
-                    description: "Get your daily prediction",
-                    payload: "prediction_payment",
-                    currency: "XTR",
-                    prices: [{ label: "Prediction", amount: 100 }]
-                });
+            // Отправляем данные в бота
+            tg.sendData(JSON.stringify({
+                action: 'get_prediction',
+                question: question
+            }));
 
-                if (result === 'paid') {
-                    // Устанавливаем кулдаун
-                    localStorage.setItem('lastPrediction', new Date().getTime().toString());
-                    document.getElementById('paymentButton').disabled = true;
-                    
-                    // Запрашиваем предсказание у бота
-                    tg.sendData(JSON.stringify({
-                        action: 'get_prediction'
-                    }));
-                }
-            } catch (error) {
-                showError('Payment failed. Please try again.');
-            }
-        }
-
-        function showError(message) {
-            const errorElement = document.getElementById('error');
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
-            setTimeout(() => {
-                errorElement.style.display = 'none';
-            }, 5000);
+            // Устанавливаем кулдаун
+            localStorage.setItem('lastPrediction', new Date().getTime().toString());
+            document.getElementById('predictionButton').disabled = true;
+            document.getElementById('cooldown').textContent = 'Следующее предсказание будет доступно через 24 часа';
         }
 
         // Обработка ответа от бота
         tg.onEvent('mainButtonClicked', function() {
             tg.close();
         });
-
-        // Инициализация
-        checkCooldown();
     </script>
 </body>
 </html>
